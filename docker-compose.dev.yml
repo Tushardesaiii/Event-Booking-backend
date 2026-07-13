@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: npm run dev
+    volumes:
+      - .:/app
+      - /app/node_modules  # Isolates container node_modules from Windows host
+    env_file:
+      - .env.development
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - RUN_MIGRATIONS=true
+      - SKIP_SERVICE_WAIT=false
+    # Override root user restriction for development bind mounts access if necessary
+    user: root
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: revelis-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@revelis.com
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - db-network
+      - app-network

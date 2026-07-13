@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # App Service (Hono Backend)
+  # ----------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: revelis-app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+      - db-network
+      - monitoring-network
+
+  # ----------------------------------------------------------------------------
+  # Database Service (PostgreSQL)
+  # ----------------------------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: revelis-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-revelis_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-revelis_password}
+      POSTGRES_DB: ${DB_NAME:-revelis_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db-network
+
+  # ----------------------------------------------------------------------------
+  # Cache Service (Redis)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: revelis-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-revelis_redis_password} --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-revelis_redis_password}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db-network
+
+networks:
+  app-network:
+    driver: bridge
+  db-network:
+    driver: bridge
+    internal: true
+  monitoring-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

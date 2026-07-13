@@ -1,0 +1,1 @@
+ALTER TABLE "signup_verification_sessions" ADD COLUMN "marketing_opt_in" boolean DEFAULT false;

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Razorpay Test Checkout</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body style="font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f7fafc; margin: 0;">
+  <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 100%;">
+    <h2>Razorpay Test Checkout</h2>
+    <p style="color: #4a5568;">Order ID: <span id="lbl-order-id"></span></p>
+    <p style="color: #4a5568;">Amount: INR <span id="lbl-amount"></span></p>
+    <button id="pay-btn" style="background-color: #3182ce; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 20px; width: 100%;">Open Checkout</button>
+  </div>
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderId = urlParams.get('orderId') || 'order_T2m2y1ahNqC3Q9';
+    const amount = urlParams.get('amount') || '529500';
+
+    document.getElementById('lbl-order-id').innerText = orderId;
+    document.getElementById('lbl-amount').innerText = (parseFloat(amount) / 100).toFixed(2);
+
+    document.getElementById('pay-btn').addEventListener('click', () => {
+      const options = {
+        "key": "rzp_test_T2cISmpuJzpb0Y",
+        "amount": amount,
+        "currency": "INR",
+        "name": "Revelis",
+        "description": "Smoke Test Payment",
+        "order_id": orderId,
+        "handler": function (response) {
+          console.log("SUCCESS DETAILS:");
+          console.log("Payment ID:", response.razorpay_payment_id);
+          console.log("Order ID:", response.razorpay_order_id);
+          console.log("Signature:", response.razorpay_signature);
+          
+          const resultDiv = document.createElement('div');
+          resultDiv.id = 'result-container';
+          resultDiv.style.marginTop = '20px';
+          resultDiv.style.padding = '15px';
+          resultDiv.style.backgroundColor = '#f0fff4';
+          resultDiv.style.border = '1px solid #c6f6d5';
+          resultDiv.style.color = '#22543d';
+          resultDiv.style.borderRadius = '6px';
+          resultDiv.style.wordBreak = 'break-all';
+          resultDiv.innerHTML = `
+            <h3>Payment Successful!</h3>
+            <p><strong>razorpay_payment_id:</strong> <span id="res-payment-id">${response.razorpay_payment_id}</span></p>
+            <p><strong>razorpay_order_id:</strong> <span id="res-order-id">${response.razorpay_order_id}</span></p>
+            <p><strong>razorpay_signature:</strong> <span id="res-signature">${response.razorpay_signature}</span></p>
+          `;
+          document.body.appendChild(resultDiv);
+        },
+        "prefill": {
+          "name": "Smoke Test User",
+          "email": "cust@example.com",
+          "contact": "9999999999"
+        },
+        "theme": {
+          "color": "#3182ce"
+        }
+      };
+      const rzp = new Razorpay(options);
+      rzp.open();
+    });
+  </script>
+</body>
+</html>

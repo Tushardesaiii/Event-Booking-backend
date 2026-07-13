@@ -1,0 +1,101 @@
+import { Hono } from 'hono';
+import { paymentsRoutes, paymentsAdminRoutes, organizerPaymentRoutes } from '../modules/payments/index.js';
+import { financeRoutes } from '../modules/finance/index.js';
+
+import { authRoutes } from '../modules/auth/routes.js';
+import { attendeesRoutes } from '../modules/attendees/routes.js';
+import { bookingOrdersRoutes } from '../modules/booking-orders/routes.js';
+import { eventCategoriesRoutes, eventsRoutes, eventSeriesRoutes, eventTagsRoutes } from '../modules/events/routes.js';
+import { issuedTicketsRoutes } from '../modules/issued-tickets/routes.js';
+import { ticketsRoutes } from '../modules/tickets/routes.js';
+import { tenantsRoutes } from '../modules/tenants/routes.js';
+import { tenantAnalyticsRoutes } from '../modules/tenant-analytics/routes.js';
+import { usersRoutes } from '../modules/users/routes.js';
+import { venuesRoutes } from '../modules/venues/routes.js';
+import { emailMarketingRoutes } from '../modules/email-marketing/routes.js';
+import { marketingRoutes } from '../modules/marketing/routes.js';
+import { marketingCampaignRoutes } from '../modules/marketing-campaigns/routes.js';
+import { analyticsRoutes } from '../modules/analytics/routes.js';
+import { groupPlansRoutes } from '../modules/group-plans/routes.js';
+import { groupChatRoutes } from '../modules/group-chat/routes.js';
+import { eventPollsRoutes } from '../modules/event-polls/routes.js';
+import { wishlistsRoutes } from '../modules/wishlists/routes.js';
+import { followsRoutes } from '../modules/follow-system/routes.js';
+import { storiesRoutes } from '../modules/stories/routes.js';
+import { notificationsRoutes } from '../modules/notifications/routes.js';
+import { organizersRoutes } from '../modules/organizer-profiles/routes.js';
+import { groupBookingsRoutes } from '../modules/group-bookings/routes.js';
+import { artistRoutes } from '../modules/artist/routes.js';
+import { profileRoutes } from '../modules/profile/routes.js';
+import { publicRoutes } from '../modules/public/routes.js';
+import { consumerRoutes } from '../modules/consumer/routes.js';
+import { vibesRoutes } from '../modules/vibes/routes.js';
+import { sosRoutes } from '../modules/sos/routes.js';
+import { aiRoutes } from '../modules/ai-chat/routes.js';
+import { mediaRoutes } from '../modules/media/routes.js';
+import { qstashRoute } from './qstash.route.js';
+import { emailRoutes } from '../modules/emails/routes.js';
+import { assetsRoutes } from '../modules/assets/routes.js';
+import { accessibilityRoutes } from '../modules/accessibility/routes.js';
+import { settlementsRoutes } from '../modules/settlements/routes.js';
+import { platformAdminRoutes } from '../modules/platform-admin/routes.js';
+import type { AppEnv } from '../types/context.js';
+import { healthRoute } from './health.route.js';
+import { storageRoute } from './storage.route.js';
+import { serveCdnObject } from './cdn.route.js';
+import { cdnRateLimit } from '../middlewares/rate-limit.middleware.js';
+
+
+// Domain routers are mounted here so each module stays isolated and easy to scale.
+export function registerRoutes(app: Hono<AppEnv>) {
+  app.route('/', healthRoute);
+  // Public object delivery (R2-backed). `:key{.+}` captures slashes in the key.
+  app.get('/cdn/:key{.+}', cdnRateLimit, serveCdnObject);
+  app.route('/qstash', qstashRoute);
+  app.route('/auth', authRoutes);
+  app.route('/assets', assetsRoutes);
+  app.route('/accessibility', accessibilityRoutes);
+  app.route('/settlements', settlementsRoutes);
+  app.route('/platform', platformAdminRoutes);
+  app.route('/public', publicRoutes);
+  app.route('/consumer', consumerRoutes);
+  app.route('/vibes', vibesRoutes);
+  app.route('/users', usersRoutes);
+  app.route('/tenants', tenantAnalyticsRoutes);
+  app.route('/tenants', tenantsRoutes);
+  app.route('/attendees', attendeesRoutes);
+  app.route('/booking-orders', bookingOrdersRoutes);
+  app.route('/payments', paymentsRoutes);
+  app.route('/organizer', organizerPaymentRoutes);
+  app.route('/admin', paymentsAdminRoutes);
+  app.route('/finance', financeRoutes);
+  app.route('/issued-tickets', issuedTicketsRoutes);
+  app.route('/venues', venuesRoutes);
+  app.route('/events', analyticsRoutes);
+  app.route('/events', eventsRoutes);
+  app.route('/event-categories', eventCategoriesRoutes);
+  app.route('/event-tags', eventTagsRoutes);
+  app.route('/event-series', eventSeriesRoutes);
+  app.route('/ticket-types', ticketsRoutes);
+  app.route('/email', emailRoutes);
+  app.route('/email-marketing', emailMarketingRoutes);
+  app.route('/marketing', marketingRoutes);
+  app.route('/marketing-campaigns', marketingCampaignRoutes);
+  
+  // Vibe Social Event Platform Routes
+  app.route('/artists', artistRoutes);
+  app.route('/organizers', organizersRoutes);
+  app.route('/group-plans', groupPlansRoutes);
+  app.route('/group-chat', groupChatRoutes);
+  app.route('/polls', eventPollsRoutes);
+  app.route('/', wishlistsRoutes);
+  app.route('/', followsRoutes);
+  app.route('/stories', storiesRoutes);
+  app.route('/', notificationsRoutes);
+  app.route('/group-bookings', groupBookingsRoutes);
+  app.route('/profiles', profileRoutes);
+  app.route('/sos', sosRoutes);
+  app.route('/ai', aiRoutes);
+  app.route('/media', mediaRoutes);
+  app.route('/storage', storageRoute);
+}

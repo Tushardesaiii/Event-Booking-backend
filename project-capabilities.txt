@@ -1,0 +1,1276 @@
+PROJECT CAPABILITIES AUDIT REPORT
+Generated: 2026-06-08
+
+================================================================================
+SECTION 1
+PROJECT OVERVIEW
+----------------
+
+* Project Name: Vibe Social Event Platform API Backend (Event Booking Backend)
+* Backend Stack: 
+  - Language: TypeScript / Node.js
+  - Web Framework: Hono
+  - Runtime Wrapper: Hono Node Server (@hono/node-server)
+  - Database Client: postgres (Postgres.js)
+  - ORM: Drizzle ORM
+  - Schema Validation: Zod
+  - Password Hashing: Argon2
+  - Runner/Compiler: tsx (TypeScript Execute)
+  - Third-party Integrations: Brevo Node SDK (email marketing template/webhook tracking)
+* Architecture Patterns:
+  - Clean Architecture / Modular Monolith structure.
+  - Domain isolation: domain modules are isolated inside "src/modules" containing their own routes, controllers, services, repositories, validation logic, types, and schemas.
+  - Core/Global configurations and middlewares are located in "src/config", "src/middlewares", "src/lib", "src/db", and "src/types".
+  - Transactions: SQL-level database transaction blocks used for state consistency (e.g. reserving ticket slots, processing story cleanup, confirming checkout).
+  - Optimistic locking: Date-trunc matching on "updatedAt" timestamps to handle concurrent write safety.
+* Database: PostgreSQL (using Drizzle ORM mapping).
+* Authentication Methods: 
+  - JWT Session Tokens (short-lived access tokens and longer-lived refresh tokens) stored in the database.
+  - Email verification with unique link tokens.
+  - Multi-step signup process utilizing SMS OTP (One-Time Password) verification via Twilio Verify API (or simulated when credentials are not configured).
+  - Role-Based Access Control (RBAC) middleware verifying user-tenant membership permissions.
+
+
+================================================================================
+SECTION 2
+IMPLEMENTED MODULES
+-------------------
+
+1. Authentication & User Verification (auth)
+   - Status: IMPLEMENTED
+   - Description: Handles user account creation, credentials login, session lifecycle, email verification, and SMS OTP verification.
+   - Routes:
+     - `POST /auth/signup`
+     - `POST /auth/signup/start`
+     - `POST /auth/signup/verify`
+     - `POST /auth/signup/resend`
+     - `POST /auth/login`
+     - `POST /auth/refresh`
+     - `POST /auth/logout`
+     - `GET /auth/me`
+     - `POST /auth/send-email-verification`
+     - `POST /auth/verify-email`
+     - `POST /auth/send-otp`
+     - `POST /auth/verify-otp`
+   - Database Tables:
+     - `auth_accounts` (auth credentials record)
+     - `sessions` (user session tokens)
+     - `signup_verification_sessions` (tracks phone/SMS verify flow)
+     - `verification_tokens` (link verification tokens)
+     - `verification_request_logs` (audit log of requests)
+     - `verification_events` (audit log of outcomes)
+     - `email_verification_tokens` (specific email verification flows)
+     - `otp_verifications` (SMS OTP verification states)
+   - Business Logic:
+     - Signup is split into initiation (`/start`) and code verification (`/verify`) to validate phone numbers before user persistence.
+     - Login verifies credentials via Argon2 and issues token pairs.
+     - Email verification and OTP codes are verified against the database.
+     - Ingestion of Twilio Verify requests to trigger codes, falling back to a bypass simulation if env parameters are not configured.
+   - Limitations: OTP verification can be bypassed globally if `AUTH_BYPASS_OTP_VERIFICATION` is enabled.
+
+2. Tenant/Workspace Management (tenants)
+   - Status: IMPLEMENTED
+   - Description: Isolation configuration scoped to subdomains or slug parameters. Administrators can update properties, handle member list roles, and remove team access.
+   - Routes:
+     - `POST /tenants`
+     - `GET /tenants`
+     - `GET /tenants/:slug`
+     - `PATCH /tenants/:slug`
+     - `DELETE /tenants/:slug`
+     - `GET /tenants/:slug/members`
+     - `POST /tenants/:slug/members`
+     - `PATCH /tenants/:slug/members/:memberId`
+     - `DELETE /tenants/:slug/members/:memberId`
+   - Database Tables:
+     - `tenants`
+     - `tenant_members`
+   - Business Logic:
+     - Organizes isolated workspaces. 
+     - Associates team users with roles: `viewer`, `staff`, `manager`, `admin`, `owner`.
+     - Validates role permissions for actions under the tenant.
+   - Limitations: No automated flow to transfer workspace ownership.
+
+3. Tenant Analytics (tenant-analytics)
+   - Status: IMPLEMENTED
+   - Description: Aggregates performance stats and operations history across the workspace for administrators.
+   - Routes:
+     - `GET /tenants/:slug/dashboard`
+     - `GET /tenants/:slug/analytics`
+     - `GET /tenants/:slug/top-events`
+     - `GET /tenants/:slug/upcoming-events`
+     - `GET /tenants/:slug/activity`
+     - `GET /tenants/:slug/health`
+   - Database Tables:
+     - Reads from `tenants`, `events`, `booking_orders`, `email_campaigns`, `email_subscribers`.
+   - Business Logic:
+     - Computes workspace-wide indicators: gross revenue, bookings counts, top-performing events list, and active subscriber metrics.
+     - Serves a unified real-time activity feed compiling event publications, order checkouts, check-ins, and email newsletter campaigns.
+   - Limitations: Endpoint access is restricted to `staff` or higher roles.
+
+4. Venue Management (venues)
+   - Status: IMPLEMENTED
+   - Description: Setup and details configuration for physical or virtual spaces.
+   - Routes:
+     - `POST /venues`
+     - `GET /venues`
+     - `GET /venues/:slug`
+     - `PATCH /venues/:slug`
+     - `DELETE /venues/:slug`
+   - Database Tables:
+     - `venues`
+   - Business Logic:
+     - Stores venue information including capacity constraints and coordinate boundaries. Handles soft deactivation.
+   - Limitations: Geographic coordinates are stored as static fields; no external mapping api verification exists.
+
+5. Event Planning & Lifecycle (events)
+   - Status: IMPLEMENTED
+   - Description: Configures event details, scheduling, publishing transitions, categories, series, and tags.
+   - Routes:
+     - `POST /events`
+     - `GET /events`
+     - `GET /events/:slug`
+     - `PATCH /events/:slug`
+     - `DELETE /events/:slug`
+     - `POST /event-categories`
+     - `GET /event-categories`
+     - `POST /event-tags`
+     - `GET /event-tags`
+     - `POST /event-series`
+     - `GET /event-series`
+     - `GET /event-series/:slug`
+   - Database Tables:
+     - `events`
+     - `categories`
+     - `tags` (raw tags pool)
+     - `event_tags` (mapping table)
+     - `event_series` (recurring templates group)
+   - Business Logic:
+     - Handles CRUD actions on events.
+     - Transitioning status to `published` checks date validity and fires background hooks to execute newsletter updates.
+     - Association of events with venue capacities, categories, tags, or recurring series lists.
+   - Limitations: Automated scheduling of series events does not exist (must be manually created).
+
+6. Event Analytics (analytics)
+   - Status: IMPLEMENTED
+   - Description: Dashboard metrics, inventory occupancy metrics, attendee assignments rate, and live gate scanning status.
+   - Routes:
+     - `GET /events/:slug/dashboard`
+     - `GET /events/:slug/analytics`
+     - `GET /events/:slug/live-status`
+     - `GET /events/:slug/inventory-summary`
+     - `GET /events/:slug/attendee-summary`
+     - `GET /events/:slug/checkin-summary`
+     - `GET /events/:slug/activity`
+   - Database Tables:
+     - Aggregated views reading from `events`, `booking_orders`, `issued_tickets`, `issued_ticket_events`.
+   - Business Logic:
+     - Computes real-time event health score using ticket sales, check-in ratios, and scan failure rates.
+     - Generates hourly and daily scan time-series tracking.
+   - Limitations: Endpoint access is restricted to `staff` or higher roles.
+
+7. Ticket Types Management (tickets)
+   - Status: IMPLEMENTED
+   - Description: Allows setting up ticket classes (e.g. VIP, General Admission) for events, pricing details, and purchase boundaries.
+   - Routes:
+     - `POST /ticket-types`
+     - `GET /ticket-types`
+     - `GET /ticket-types/:slug`
+     - `PATCH /ticket-types/:slug`
+     - `DELETE /ticket-types/:slug`
+   - Database Tables:
+     - `ticket_types`
+   - Business Logic:
+     - Sets pricing scales, total stock capacity, sales starts/ends, and min/max items per order limit.
+   - Limitations: No dynamic ticket pricing adjusters.
+
+8. Booking Orders Management (booking-orders)
+   - Status: IMPLEMENTED
+   - Description: Tracks booking checkout stages (draft, pending, confirmed, paid, cancelled, expired, refunded), reserves seats, and handles attendee registrations.
+   - Routes:
+     - `POST /booking-orders`
+     - `GET /booking-orders`
+     - `GET /booking-orders/:orderNumber`
+     - `PATCH /booking-orders/:orderNumber`
+     - `DELETE /booking-orders/:orderNumber`
+     - `GET /booking-orders/:orderNumber/items`
+     - `GET /booking-orders/:orderNumber/attendees`
+     - `POST /booking-orders/:orderNumber/assign-attendees`
+   - Database Tables:
+     - `booking_orders`
+     - `booking_order_items` (purchased lines)
+     - `booking_order_counters` (autonumber sequencer)
+     - `booking_order_item_attendees` (mapping assignments)
+   - Business Logic:
+     - Placing an order locks ticket inventory.
+     - Handles transitions through lifecycle. Confirming an order converts stock reservations to confirmed sales and triggers ticket generation.
+     - Supports assigning details of attendees to purchased ticket lines.
+   - Limitations: No integrated financial payment gateway (Stripe/PayPal) exists in the code. Checkout payment transitions are simulated via administrative PATCH routes.
+
+9. Inventory Management (inventory)
+   - Status: INTERNAL ONLY
+   - Description: Governs atomic locks, holds, capacity constraints, and prevents overbooking.
+   - Routes: None (accessed internally by services).
+   - Database Tables:
+     - `inventory_reservations` (holds items before purchase)
+     - `inventory_events` (audit log of transactions)
+   - Business Logic:
+     - Multi-row atomic updates holding available capacity.
+     - Automated expiration releases locked inventory if checkouts expire.
+     - Drift reconciliation rules checks if inventory matches active tickets.
+   - Limitations: No direct public endpoints.
+
+10. Issued Tickets & Gate Validation (issued-tickets)
+    - Status: IMPLEMENTED
+    - Description: Handles the validation of confirm tickets, ticket check-ins, scans, and audit trails.
+    - Routes:
+      - `GET /issued-tickets`
+      - `GET /issued-tickets/:ticketNumber`
+      - `PATCH /issued-tickets/:ticketNumber`
+      - `DELETE /issued-tickets/:ticketNumber`
+      - `POST /issued-tickets/validate`
+      - `POST /issued-tickets/:ticketNumber/check-in`
+    - Database Tables:
+      - `issued_tickets` (the tickets data)
+      - `issued_ticket_counters` (sequential ID generator)
+      - `issued_ticket_events` (scans history audit)
+    - Business Logic:
+      - Confirmed bookings automatically generate unique tickets with validation codes.
+      - Gate checking verifies ticket status, matching tenant, scanning rules (rejecting duplicates, voids, or transfers).
+      - Registers scan timestamps and updates check-in totals.
+    - Limitations: QR codes are managed via text hash strings; no physical QR image rendering is done backend.
+
+11. Attendee Management (attendees)
+    - Status: IMPLEMENTED
+    - Description: Profile catalog of event attendees.
+    - Routes:
+      - `POST /attendees`
+      - `GET /attendees`
+      - `GET /attendees/:id`
+      - `PATCH /attendees/:id`
+      - `DELETE /attendees/:id`
+      - `PATCH /attendees/:id/check-in`
+      - `PATCH /attendees/:id/revert-check-in`
+    - Database Tables:
+      - `attendees`
+   - Business Logic:
+     - CRUD on attendee profile sheets containing emergency contact phone, age, city, and notes.
+     - Directly updates attendance states and handles scan reversal logic.
+   - Limitations: Attendee registration is only editable manually by managers or during ticket assignments.
+
+12. Email Marketing Campaigns (email-marketing)
+    - Status: IMPLEMENTED
+    - Description: Rich email template creator, segment builders, newsletter campaigns, scheduling, background workers, and Brevo webhook callback suppressions.
+    - Routes:
+      - `POST /email-marketing/webhooks/brevo`
+      - `POST /email-marketing/templates`
+      - `PATCH /email-marketing/templates/:id`
+      - `GET /email-marketing/templates/:id`
+      - `GET /email-marketing/templates`
+      - `DELETE /email-marketing/templates/:id`
+      - `POST /email-marketing/subscribers`
+      - `POST /email-marketing/subscribers/unsubscribe/:email`
+      - `GET /email-marketing/subscribers`
+      - `POST /email-marketing/subscribers/import`
+      - `POST /email-marketing/segments`
+      - `PATCH /email-marketing/segments/:id`
+      - `GET /email-marketing/segments/:id`
+      - `GET /email-marketing/segments`
+      - `DELETE /email-marketing/segments/:id`
+      - `POST /email-marketing/campaigns`
+      - `PATCH /email-marketing/campaigns/:id`
+      - `GET /email-marketing/campaigns/:id`
+      - `GET /email-marketing/campaigns`
+      - `DELETE /email-marketing/campaigns/:id`
+      - `POST /email-marketing/campaigns/:id/duplicate`
+      - `POST /email-marketing/campaigns/:id/schedule`
+      - `POST /email-marketing/campaigns/:id/cancel`
+      - `POST /email-marketing/campaigns/:id/send`
+    - Database Tables:
+      - `email_templates`
+      - `email_campaigns`
+      - `email_campaign_recipients`
+      - `email_segments`
+      - `email_subscribers`
+      - `email_suppressions`
+      - `email_outbox`
+      - `email_events`
+    - Business Logic:
+      - Custom compilation of subscribers via CSV imports.
+      - Segments users dynamically based on configured filter scopes.
+      - Personalizes HTML/text campaigns with custom subscriber fields.
+      - Schedules campaigns for later dispatch or pushes them immediately.
+      - Outbox queue processed by background polling worker.
+      - Integrates Brevo webhook callbacks to auto-register unsubscribes, spam complaints, or bounces into the suppression table.
+    - Limitations: Outbox worker depends on Brevo SDK configurations. Webhook signatures require secret setup.
+
+13. Marketing Campaigns & Subscribers (marketing & marketing-campaigns)
+    - Status: IMPLEMENTED
+    - Description: Parallel simplified marketing newsletter campaigns and subscriber endpoints.
+    - Routes:
+      - `POST /marketing/subscribers`
+      - `POST /marketing/unsubscribe`
+      - `GET /marketing/subscribers`
+      - `PATCH /marketing/subscribers/:id`
+      - `DELETE /marketing/subscribers/:id`
+      - `POST /marketing-campaigns`
+      - `GET /marketing-campaigns`
+      - `PATCH /marketing-campaigns/:id`
+      - `POST /marketing-campaigns/:id/schedule`
+      - `POST /marketing-campaigns/:id/cancel`
+      - `POST /marketing-campaigns/:id/preview`
+      - `POST /marketing-campaigns/:id/send`
+      - `GET /marketing-campaigns/:id/analytics`
+    - Database Tables:
+      - `marketing_subscribers`
+      - `marketing_campaigns`
+      - `marketing_campaign_deliveries`
+    - Business Logic:
+      - CRUD for subscribers, drafts newsletter contents, schedules, and sends immediate preview mails.
+    - Limitations: Partially duplicates logical boundaries of the more robust `email-marketing` module.
+
+14. Organizer Profiles (organizer-profiles)
+    - Status: IMPLEMENTED
+    - Description: Public profiles for organizers, allowing reviews/ratings and listing organized events.
+    - Routes:
+      - `POST /organizers`
+      - `GET /organizers`
+      - `GET /organizers/:slug`
+      - `PATCH /organizers/:slug`
+      - `DELETE /organizers/:slug`
+      - `GET /organizers/:slug/events`
+      - `GET /organizers/:slug/reviews`
+      - `POST /organizers/:slug/reviews`
+      - `GET /organizers/:slug/analytics`
+    - Database Tables:
+      - `organizers`
+      - `organizer_social_links`
+      - `organizer_reviews`
+    - Business Logic:
+      - Creates organizer details, logs platforms/social links, and stores ratings and review comments.
+      - Computes average rating statistics, total reviews count, follower totals, and organized events count.
+    - Limitations: Review ratings are not protected by purchase validation (any user can review any organizer profile). No review moderation or reporting routes exist.
+
+15. Group Planning (group-plans)
+    - Status: IMPLEMENTED
+    - Description: Users coordinate event attendance, create group plans, invite others, accept/reject invites, and track activity logs.
+    - Routes:
+      - `POST /group-plans`
+      - `GET /group-plans`
+      - `GET /group-plans/:id`
+      - `PATCH /group-plans/:id`
+      - `DELETE /group-plans/:id`
+      - `POST /group-plans/:id/invite`
+      - `POST /group-plans/invites/:inviteId/accept`
+      - `POST /group-plans/invites/:inviteId/reject`
+      - `POST /group-plans/:id/leave`
+      - `GET /group-plans/:id/members`
+      - `DELETE /group-plans/:id/members`
+      - `POST /group-plans/:id/transfer-ownership`
+      - `GET /group-plans/:id/activity`
+    - Database Tables:
+      - `group_plans`
+      - `group_plan_members`
+      - `group_plan_invites`
+      - `group_plan_activity`
+    - Business Logic:
+      - Associates group plans with specific event profiles.
+      - Tracks plan roles (owner, admin, member), acceptance status, and logs activities (e.g. joined, left, transferred ownership).
+    - Limitations: No calendar sharing integrations.
+
+16. Group Chat (group-chat)
+    - Status: IMPLEMENTED
+    - Description: Dedicated chat rooms linked to group plans. Includes messaging history, message edits, replies, file attachment logs, and reactions.
+    - Routes:
+      - `POST /group-chat/rooms`
+      - `GET /group-chat/rooms/:id`
+      - `POST /group-chat/rooms/:id/messages`
+      - `GET /group-chat/rooms/:id/messages`
+      - `PATCH /group-chat/messages/:id`
+      - `DELETE /group-chat/messages/:id`
+      - `POST /group-chat/messages/:id/reactions`
+      - `DELETE /group-chat/messages/:id/reactions`
+    - Database Tables:
+      - `group_chat_rooms`
+      - `group_chat_members`
+      - `group_chat_messages`
+      - `group_chat_reactions`
+      - `group_chat_attachments`
+    - Business Logic:
+      - Governs REST messaging. Handles message edits (flags `isEdited`), replies to message IDs, reactions, and registers uploaded file links.
+    - Limitations: Chat is processed purely via HTTP REST; no WebSockets or real-time pub/sub implementation exists.
+
+17. Event Polls (event-polls)
+    - Status: IMPLEMENTED
+    - Description: User voting polls created inside group plans.
+    - Routes:
+      - `POST /polls`
+      - `GET /polls/:id`
+      - `PATCH /polls/:id`
+      - `DELETE /polls/:id`
+      - `POST /polls/:id/vote`
+    - Database Tables:
+      - `event_polls`
+      - `event_poll_options`
+      - `event_poll_votes`
+    - Business Logic:
+      - Creates voting polls containing choices. Captures user votes and returns choice aggregations.
+    - Limitations: Closing polls is manual; no automatic cron execution supports deadline endings.
+
+18. Wishlist System (wishlists)
+    - Status: IMPLEMENTED
+    - Description: Users mark events of interest to compile a personal saved event dashboard.
+    - Routes:
+      - `POST /wishlists/events/:eventId`
+      - `DELETE /wishlists/events/:eventId`
+      - `GET /wishlists`
+      - `GET /users/me/wishlist`
+    - Database Tables:
+      - `wishlists`
+    - Business Logic:
+      - Simply registers/unregisters combinations of user ID and event ID.
+    - Limitations: No custom wishlist categorization folders.
+
+19. Social Follows (follow-system)
+    - Status: IMPLEMENTED
+    - Description: Users build follow links with other users, organizer profiles, and artist user accounts.
+    - Routes:
+      - `POST /users/:id/follow`
+      - `DELETE /users/:id/follow`
+      - `POST /organizers/:id/follow`
+      - `DELETE /organizers/:id/follow`
+      - `POST /artists/:id/follow`
+      - `DELETE /artists/:id/follow`
+      - `GET /users/:id/followers`
+      - `GET /users/:id/following`
+    - Database Tables:
+      - `user_follows`
+      - `organizer_follows`
+      - `artist_follows`
+    - Business Logic:
+      - Simply registers follow linkages in the database.
+    - Limitations: Follow relationships are recorded, but there are no notifications, timelines, or feeds generated from followed actors. Artist follow links map directly to standard user account IDs.
+
+20. Stories System (stories)
+    - Status: IMPLEMENTED
+    - Description: Pushes media updates that remain live for 24 hours. Users view, react, and reply to active stories.
+    - Routes:
+      - `POST /stories`
+      - `GET /stories`
+      - `GET /stories/:id`
+      - `DELETE /stories/:id`
+      - `POST /stories/:id/view`
+      - `POST /stories/:id/react`
+      - `POST /stories/:id/reply`
+      - `POST /stories/cleanup/run`
+    - Database Tables:
+      - `stories`
+      - `story_views` (logs viewer IDs)
+      - `story_reactions` (emoji metrics)
+      - `story_replies` (text responses)
+    - Business Logic:
+      - Media url registration.
+      - Tracks story views, reactions, and replies.
+      - Exposes a manual cleanup endpoint to archive or delete stories older than 24 hours.
+    - Limitations: Automated cleanup requires hitting `/stories/cleanup/run`; no cron worker is configured to execute this automatically.
+
+21. Notifications & Alert Settings (notifications)
+    - Status: IMPLEMENTED
+    - Description: Feeds alert logs to users and updates preference dashboards.
+    - Routes:
+      - `GET /notifications`
+      - `PATCH /notifications/:id/read`
+      - `PATCH /notifications/read-all`
+      - `GET /notification-preferences`
+      - `PATCH /notification-preferences`
+    - Database Tables:
+      - `notifications`
+      - `notification_preferences`
+    - Business Logic:
+      - Serves a lists feed of user alerts, tracks read states, and updates toggle constraints for SMS/Email/In-App.
+    - Limitations: Actual delivery is processed synchronously within specific modules utilizing Twilio and Brevo libraries.
+
+22. Users (users)
+    - Status: NOT IMPLEMENTED
+    - Description: Directory contains placeholder files but implements no route bindings.
+    - Routes: None
+    - Database Tables:
+      - `users`
+    - Business Logic: None (user properties are queried via `/auth/me` or auth module repositories).
+    - Limitations: Placeholder only.
+
+23. Assets Management (assets)
+    - Status: INTERNAL ONLY
+    - Description: Database schema to store media links.
+    - Routes: None
+    - Database Tables:
+      - `assets`
+    - Business Logic: Stores file metadata, type, and url references.
+    - Limitations: Image upload handles static metadata storage; no file storage hook exists backend.
+
+24. Audit Logging (audit-logs)
+    - Status: INTERNAL ONLY
+    - Description: Core framework logging actions.
+    - Routes: None
+    - Database Tables:
+      - `audit_logs`
+    - Business Logic: Stores database mutation audit entries.
+    - Limitations: No routes exposed.
+
+
+================================================================================
+SECTION 3
+USER ACTIVITIES
+----------------
+
+A user can:
+* Create a login account using email/password (`POST /auth/signup` and `POST /auth/signup/start`).
+* Verify sign up code (`POST /auth/signup/verify`) and resend sign up code (`POST /auth/signup/resend`).
+* Authenticate credentials (`POST /auth/login`), refresh authentication (`POST /auth/refresh`), and log out (`POST /auth/logout`).
+* Retrieve personal profile properties (`GET /auth/me`).
+* Request email verification link (`POST /auth/send-email-verification`) and verify email address (`POST /auth/verify-email`).
+* Request verification SMS OTP code (`POST /auth/send-otp`) and verify SMS OTP code (`POST /auth/verify-otp`).
+* List all active tenant organizations (`GET /tenants`) and look up individual tenant details (`GET /tenants/:slug`).
+* Search and list events using parameters: venues, categories, tags, cities, dates (`GET /events`).
+* View specific event details (`GET /events/:slug`), list event categories (`GET /event-categories`), tags (`GET /event-tags`), and event series details (`GET /event-series/:slug`).
+* Create a booking order (`POST /booking-orders`), list orders, and cancel bookings (`DELETE /booking-orders/:orderNumber`).
+* Assign attendee details to tickets (`POST /booking-orders/:orderNumber/assign-attendees`), query order items (`GET /booking-orders/:orderNumber/items`), and search order attendees (`GET /booking-orders/:orderNumber/attendees`).
+* Access personal issued tickets list (`GET /issued-tickets`), view individual ticket specifications (`GET /issued-tickets/:ticketNumber`), and void/transfer tickets (`PATCH /issued-tickets/:ticketNumber`).
+* Subscribe email to basic marketing distributions (`POST /marketing/subscribers`) or unsubscribe (`POST /marketing/unsubscribe`).
+* Submit rating reviews and comments on organizer profile pages (`POST /organizers/:slug/reviews`), and view reviews (`GET /organizers/:slug/reviews`).
+* List organizer profiles (`GET /organizers`), get details (`GET /organizers/:slug`), and search organized events (`GET /organizers/:slug/events`).
+* Create personal wishlists of events (`POST /wishlists/events/:eventId`), delete from wishlist (`DELETE /wishlists/events/:eventId`), and list personal wishlists (`GET /users/me/wishlist`).
+* Follow or unfollow other users (`POST/DELETE /users/:id/follow`), organizer profiles (`POST/DELETE /organizers/:id/follow`), or artists (`POST/DELETE /artists/:id/follow`).
+* Search follower/following lists (`GET /users/:id/followers` and `/following`).
+* Create a group plan (`POST /group-plans`), invite friends (`POST /group-plans/:id/invite`), accept/reject invitations (`POST /group-plans/invites/:inviteId/accept` or `reject`), leave groups (`POST /group-plans/:id/leave`), transfer group ownership (`POST /group-plans/:id/transfer-ownership`), view group activity logs (`GET /group-plans/:id/activity`), and get member lists (`GET /group-plans/:id/members`).
+* Create group chat rooms (`POST /group-chat/rooms`), send text messages (`POST /group-chat/rooms/:id/messages`), query message history (`GET /group-chat/rooms/:id/messages`), edit messages (`PATCH /group-chat/messages/:id`), delete messages (`DELETE /group-chat/messages/:id`), react to messages (`POST /group-chat/messages/:id/reactions`), and remove message reactions (`DELETE /group-chat/messages/:id/reactions`).
+* Create group decision polls (`POST /polls`), vote on poll options (`POST /polls/:id/vote`), and get poll details/results (`GET /polls/:id`).
+* Publish visual stories (`POST /stories`), list stories (`GET /stories`), view stories (`POST /stories/:id/view`), react to stories (`POST /stories/:id/react`), and reply to stories (`POST /stories/:id/reply`).
+* Access notifications alerts list (`GET /notifications`), toggle read states (`PATCH /notifications/:id/read` or `read-all`), and update channels preferences settings (`GET/PATCH /notification-preferences`).
+
+
+================================================================================
+SECTION 4
+ORGANIZER & TENANT ACTIVITIES
+-----------------------------
+
+A tenant manager, workspace staff, or workspace owner can:
+* Create organizations (`POST /tenants`) and update organization attributes (`PATCH /tenants/:slug`).
+* Manage membership list access: invite users, update member roles, remove members from workspaces (`POST/PATCH/DELETE /tenants/:slug/members`).
+* Create venues (`POST /venues`), edit properties (`PATCH /venues/:slug`), and deactivate venues (`DELETE /venues/:slug`).
+* Create event categories (`POST /event-categories`) and tags (`POST /event-tags`).
+* Create event series (`POST /event-series`).
+* Create events (`POST /events`), edit details (`PATCH /events/:slug`), and delete events (`DELETE /events/:slug`).
+* Create ticket types for events (`POST /ticket-types`), edit pricing and sales window details (`PATCH /ticket-types/:slug`), and delete ticket types (`DELETE /ticket-types/:slug`).
+* Create organizer profiles (`POST /organizers`), edit details (`PATCH /organizers/:slug`), and delete organizer profiles (`DELETE /organizers/:slug`).
+* View event dashboards, advanced sales analytics, revenue timelines, live attendance, and check-in success metrics (`GET /events/:slug/dashboard` / `analytics` / `live-status` / `checkin-summary`).
+* View event activity feeds (`GET /events/:slug/activity`).
+* View tenant-wide dashboards, top/upcoming events, and unified activity logs (`GET /tenants/:slug/dashboard` / `top-events` / `activity`).
+* Build template layouts for marketing emails (`POST/PATCH/DELETE /email-marketing/templates`).
+* Compile subscriber databases via manually adding subscriber records or batch importing from CSV lists (`POST /email-marketing/subscribers` / `/import`).
+* Build user segments using filter criteria (`POST/PATCH/DELETE /email-marketing/segments`).
+* Create email newsletters and campaigns (`POST /email-marketing/campaigns` or `/marketing-campaigns`), duplicate campaigns (`POST /email-marketing/campaigns/:id/duplicate`), schedule campaigns (`POST /email-marketing/campaigns/:id/schedule`), cancel scheduled sends (`POST /email-marketing/campaigns/:id/cancel`), and execute mass campaign sends (`POST /email-marketing/campaigns/:id/send` or `/marketing-campaigns/:id/send`).
+* View campaign analytics and dispatch logs (`GET /marketing-campaigns/:id/analytics`).
+* Scan tickets at gates and validate QR string parameters (`POST /issued-tickets/validate` and `check-in`).
+* Revert physical attendee check-ins (`PATCH /attendees/:id/revert-check-in`).
+* Cancel/Update booking orders and change states (`PATCH/DELETE /booking-orders/:orderNumber`).
+* Soft-delete issued tickets (`DELETE /issued-tickets/:ticketNumber`) or void/invalidate tickets (`PATCH /issued-tickets/:ticketNumber`).
+
+
+================================================================================
+SECTION 5
+SOCIAL FEATURES
+---------------
+
+* stories
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/stories/routes.ts`, `schema.ts`, `controller.ts`, `service.ts`, `repository.ts`, `stories-smoke-test.ts`. Full support for creating stories, logging views, casting reactions, and submitting replies. Exposes cleanup endpoints to remove stories older than 24 hours.
+
+* group plans
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/group-plans/routes.ts`, `schema.ts`, `controller.ts`, `service.ts`, `repository.ts`, `group-plans-smoke-test.ts`. Support for creating plans, inviting members, accept/reject, leaving plans, transfer of ownership, member listings, and activity logging.
+
+* group chat
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/group-chat/routes.ts`, `schema.ts`, `controller.ts`, `service.ts`, `repository.ts`, `group-chat-smoke-test.ts`. Handles rooms, member roles, sending/editing/deleting messages, replies, emoji reactions, and attachment logging. Chat updates are REST-based only (no WebSocket connections).
+
+* voting
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/event-polls/routes.ts`, `schema.ts`, `controller.ts`, `service.ts`, `repository.ts`, `event-polls-smoke-test.ts`. Poll creation, choice options mapping, cast voting, and poll updates.
+
+* wishlists
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/wishlists/routes.ts`, `schema.ts`, `controller.ts`, `service.ts`, `repository.ts`, `wishlists-smoke-test.ts`. Simple wishlist registry linking users and events.
+
+* follows
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/follow-system/routes.ts`, `schema.ts`, `controller.ts`, `service.ts`, `repository.ts`, `follow-system-smoke-test.ts`. Maps followers to users, organizer profiles, and artist user identifiers.
+
+* buddies
+  - Status: NOT IMPLEMENTED
+  - Evidence: No references in schemas, routes, or controllers.
+
+* notifications
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/notifications/routes.ts`, `schema.ts`, `controller.ts`, `service.ts`, `repository.ts`, `notifications-smoke-test.ts`. Delivers notification alerts list, manages read states, and configures channel preferences.
+
+* social feed
+  - Status: NOT IMPLEMENTED
+  - Evidence: No schemas or routes exist for a user-facing social feed. (The tenant and event activity feeds are administrative analytics components restricted to staff).
+
+
+================================================================================
+SECTION 6
+SAFETY FEATURES
+---------------
+
+* SOS
+  - Status: NOT IMPLEMENTED
+  - Evidence: No references in schemas, routes, or controllers.
+
+* trusted contacts
+  - Status: NOT IMPLEMENTED
+  - Evidence: No database tables or routes.
+
+* emergency contacts
+  - Status: PARTIAL
+  - Evidence: Schema definition for the `attendees` table includes text fields `emergency_contact_name` and `emergency_contact_phone`. However, this is static profiles metadata only; no notification flow or emergency services integration is connected.
+
+* event helpline
+  - Status: NOT IMPLEMENTED
+  - Evidence: No database tables, routes, or controllers.
+
+* medical desk support
+  - Status: NOT IMPLEMENTED
+  - Evidence: No references in schemas, routes, or controllers.
+
+* issue reporting
+  - Status: NOT IMPLEMENTED
+  - Evidence: No issue reporting tables or endpoints.
+
+* moderation
+  - Status: NOT IMPLEMENTED
+  - Evidence: No routes or services exist for reporting or moderating reviews, messages, or stories.
+
+* user blocking
+  - Status: NOT IMPLEMENTED
+  - Evidence: No database tables or blocking logic.
+
+
+================================================================================
+SECTION 7
+EVENT CAPABILITIES
+------------------
+
+* creation
+  - Status: IMPLEMENTED
+  - Routes: `POST /events`
+  - Controllers: `eventsController.create`
+  - Database: `events`
+  - Business Logic: Validates fields, maps venue capacity constraints, inserts event under draft status.
+
+* publishing
+  - Status: IMPLEMENTED
+  - Routes: `PATCH /events/:slug` (with status 'published')
+  - Controllers: `eventsController.update`
+  - Database: `events`
+  - Business Logic: Checks chronological dates validity, transitions event to published state, and fires marketing hooks to trigger template newsletters.
+
+* cancellation
+  - Status: IMPLEMENTED
+  - Routes: `PATCH /events/:slug` (with status 'cancelled')
+  - Controllers: `eventsController.update`
+  - Database: `events`
+  - Business Logic: Cancels event dates and sets state.
+
+* discovery
+  - Status: IMPLEMENTED
+  - Routes: `GET /events`
+  - Controllers: `eventsController.list`
+  - Database: `events`
+  - Business Logic: Retrieves lists matching filters.
+
+* filtering
+  - Status: IMPLEMENTED
+  - Routes: `GET /events`
+  - Controllers: `eventsController.list`
+  - Database: `events`, `event_tags`, `categories`, `venues`
+  - Business Logic: Filters by categories list, tags list, city name, search query strings, start/end dates, featured flag, or windows (live/upcoming/past).
+
+* ticketing
+  - Status: IMPLEMENTED
+  - Routes: `POST/PATCH/DELETE /ticket-types`
+  - Controllers: `ticketsController.create` / `update` / `delete`
+  - Database: `ticket_types`
+  - Business Logic: Sets up available pricing options, quantities, and sales windows.
+
+* check-in
+  - Status: IMPLEMENTED
+  - Routes: `POST /issued-tickets/:ticketNumber/check-in` or `PATCH /attendees/:id/check-in`
+  - Controllers: `issuedTicketsController.checkIn` / `attendeesController.checkIn`
+  - Database: `issued_tickets`, `issued_ticket_events`, `attendees`
+  - Business Logic: Validates QR hash strings, prevents double scans, checks status, records check-in timestamp.
+
+* analytics
+  - Status: IMPLEMENTED
+  - Routes: `/events/:slug/dashboard`, `/events/:slug/analytics`, `/events/:slug/live-status`, `/events/:slug/inventory-summary`, `/events/:slug/attendee-summary`, `/events/:slug/checkin-summary`, `/events/:slug/activity`
+  - Controllers: `analyticsController`
+  - Database: Queries compiled from `events`, `booking_orders`, `issued_tickets`, `issued_ticket_events`.
+  - Business Logic: Displays metrics (revenue, scan rates, active scanner devices count, scan failure charts, reservation conversion rate, attendance).
+
+
+================================================================================
+SECTION 8
+BOOKING & PAYMENT CAPABILITIES
+------------------------------
+
+* booking orders
+  - Status: IMPLEMENTED
+  - Description: The checkout stages lifecycle engine.
+  - Evidence: `src/modules/booking-orders` directory containing CRUD services, lifecycle validators, and autonumber order sequences.
+
+* reservations
+  - Status: IMPLEMENTED
+  - Description: Atomic holds on capacities.
+  - Evidence: `src/modules/inventory/service.ts` contains `reserveInventoryForBookingOrder` which creates holding slots before confirming orders.
+
+* inventory
+  - Status: IMPLEMENTED
+  - Description: Validates available quantities and prevents overbooking.
+  - Evidence:中央 repository of allocations inside `src/modules/inventory/service.ts`.
+
+* payments
+  - Status: NOT IMPLEMENTED
+  - Reason: No payment gateway integration (Stripe, etc.) found in the code.
+  - Evidence: Booking orders status can be manually updated to `confirmed` or `paid` using administrative routes; no financial transactions are processed.
+
+* refunds
+  - Status: SIMULATED / PARTIAL
+  - Reason: Ticket types can have `isRefundable: boolean` set to true, and order/ticket status can be set to `refunded` or `partially_refunded`. However, this is simulated via status flags; no financial refund is executed.
+  - Evidence: `updateBookingOrderByOrderNumber` and `applyIssuedTicketStatusForBookingOrder` accept the state parameters, but perform no payment gateway API triggers.
+
+* ticket issuance
+  - Status: IMPLEMENTED
+  - Description: Generating tickets upon booking confirmation.
+  - Evidence: Once booking status transitions to confirmed, `issueIssuedTicketsForBookingOrder` is called to generate ticket records with serial keys and validation strings.
+
+
+================================================================================
+SECTION 9
+ANALYTICS CAPABILITIES
+----------------------
+
+* Event Analytics
+  - Routes:
+    - `GET /events/:slug/dashboard`
+    - `GET /events/:slug/analytics`
+    - `GET /events/:slug/live-status`
+    - `GET /events/:slug/inventory-summary`
+    - `GET /events/:slug/attendee-summary`
+    - `GET /events/:slug/checkin-summary`
+    - `GET /events/:slug/activity`
+  - Metrics: Gross revenue, estimated revenue, tickets sold/available/reserved, bookings count by status, registrations completion rate, check-in success rate, active scanner count, scan timeline.
+  - Limitations: Endpoint access restricted to `staff` or higher roles.
+
+* Tenant Analytics
+  - Routes:
+    - `GET /tenants/:slug/dashboard`
+    - `GET /tenants/:slug/analytics`
+    - `GET /tenants/:slug/top-events`
+    - `GET /tenants/:slug/upcoming-events`
+    - `GET /tenants/:slug/activity`
+    - `GET /tenants/:slug/health`
+  - Metrics: Workspace gross revenue, total tickets sold, active events count, top performing events, upcoming event schedules, tenant activity log.
+  - Limitations: Endpoint access restricted to `staff` or higher roles.
+
+* Organizer Analytics
+  - Routes:
+    - `GET /organizers/:slug/analytics`
+  - Metrics: Average rating score, total reviews count, total follower counts, organized events totals.
+  - Limitations: Returns basic counts only; no time-series analytics dashboard exists for organizers.
+
+* Platform Analytics
+  - Status: NOT IMPLEMENTED
+  - Reason: No platform-wide admin metrics aggregation endpoints are defined.
+
+
+================================================================================
+SECTION 10
+DATABASE INVENTORY
+------------------
+
+Grouped by Module:
+
+1. Authentication & Session Management
+   - `auth_accounts`
+   - `sessions`
+   - `signup_verification_sessions`
+   - `verification_tokens`
+   - `verification_request_logs`
+   - `verification_events`
+   - `email_verification_tokens`
+   - `otp_verifications`
+
+2. Tenant Workspace Management
+   - `tenants`
+   - `tenant_members`
+
+3. Venue Management
+   - `venues`
+
+4. Events & Taxonomy
+   - `events`
+   - `categories`
+   - `tags`
+   - `event_tags`
+   - `event_series`
+
+5. Ticket Configuration
+   - `ticket_types`
+
+6. Booking Orders
+   - `booking_orders`
+   - `booking_order_items`
+   - `booking_order_counters`
+   - `booking_order_item_attendees`
+
+7. Inventory Tracking
+   - `inventory_reservations`
+   - `inventory_events`
+
+8. Issued Tickets
+   - `issued_tickets`
+   - `issued_ticket_counters`
+   - `issued_ticket_events`
+
+9. Attendee Records
+   - `attendees`
+
+10. Email Marketing
+    - `email_templates`
+    - `email_campaigns`
+    - `email_campaign_recipients`
+    - `email_segments`
+    - `email_subscribers`
+    - `email_suppressions`
+    - `email_outbox`
+    - `email_events`
+
+11. Newsletters Marketing
+    - `marketing_subscribers`
+    - `marketing_campaigns`
+    - `marketing_campaign_deliveries`
+
+12. Organizer Profiles
+    - `organizers`
+    - `organizer_social_links`
+    - `organizer_reviews`
+
+13. Group Planning
+    - `group_plans`
+    - `group_plan_members`
+    - `group_plan_invites`
+    - `group_plan_activity`
+
+14. Group Chat
+    - `group_chat_rooms`
+    - `group_chat_members`
+    - `group_chat_messages`
+    - `group_chat_reactions`
+    - `group_chat_attachments`
+
+15. Event Polls (Voting)
+    - `event_polls`
+    - `event_poll_options`
+    - `event_poll_votes`
+
+16. Wishlist System
+    - `wishlists`
+
+17. Social Follow System
+    - `user_follows`
+    - `organizer_follows`
+    - `artist_follows`
+
+18. Stories System
+    - `stories`
+    - `story_views`
+    - `story_reactions`
+    - `story_replies`
+
+19. Notifications System
+    - `notifications`
+    - `notification_preferences`
+
+20. Assets & Audit Logs (System tables)
+    - `assets`
+    - `audit_logs`
+
+
+================================================================================
+SECTION 11
+API INVENTORY
+-------------
+
+Grouped by Module:
+
+1. System Health
+   - `GET /health`
+
+2. Authentication
+   - `POST /auth/signup`
+   - `POST /auth/signup/start`
+   - `POST /auth/signup/verify`
+   - `POST /auth/signup/resend`
+   - `POST /auth/login`
+   - `POST /auth/refresh`
+   - `POST /auth/logout`
+   - `GET /auth/me`
+   - `POST /auth/send-email-verification`
+   - `POST /auth/verify-email`
+   - `POST /auth/send-otp`
+   - `POST /auth/verify-otp`
+
+3. Tenant/Workspace Management
+   - `POST /tenants`
+   - `GET /tenants`
+   - `GET /tenants/:slug`
+   - `PATCH /tenants/:slug`
+   - `DELETE /tenants/:slug`
+   - `GET /tenants/:slug/members`
+   - `POST /tenants/:slug/members`
+   - `PATCH /tenants/:slug/members/:memberId`
+   - `DELETE /tenants/:slug/members/:memberId`
+
+4. Tenant Analytics
+   - `GET /tenants/:slug/dashboard`
+   - `GET /tenants/:slug/analytics`
+   - `GET /tenants/:slug/top-events`
+   - `GET /tenants/:slug/upcoming-events`
+   - `GET /tenants/:slug/activity`
+   - `GET /tenants/:slug/health`
+
+5. Venue Management
+   - `POST /venues`
+   - `GET /venues`
+   - `GET /venues/:slug`
+   - `PATCH /venues/:slug`
+   - `DELETE /venues/:slug`
+
+6. Event Planning & Taxonomy
+   - `POST /events`
+   - `GET /events`
+   - `GET /events/:slug`
+   - `PATCH /events/:slug`
+   - `DELETE /events/:slug`
+   - `POST /event-categories`
+   - `GET /event-categories`
+   - `POST /event-tags`
+   - `GET /event-tags`
+   - `POST /event-series`
+   - `GET /event-series`
+   - `GET /event-series/:slug`
+
+7. Event Analytics
+   - `GET /events/:slug/dashboard`
+   - `GET /events/:slug/analytics`
+   - `GET /events/:slug/live-status`
+   - `GET /events/:slug/inventory-summary`
+   - `GET /events/:slug/attendee-summary`
+   - `GET /events/:slug/checkin-summary`
+   - `GET /events/:slug/activity`
+
+8. Ticket Configurations
+   - `POST /ticket-types`
+   - `GET /ticket-types`
+   - `GET /ticket-types/:slug`
+   - `PATCH /ticket-types/:slug`
+   - `DELETE /ticket-types/:slug`
+
+9. Booking Orders
+   - `POST /booking-orders`
+   - `GET /booking-orders`
+   - `GET /booking-orders/:orderNumber`
+   - `PATCH /booking-orders/:orderNumber`
+   - `DELETE /booking-orders/:orderNumber`
+   - `GET /booking-orders/:orderNumber/items`
+   - `GET /booking-orders/:orderNumber/attendees`
+   - `POST /booking-orders/:orderNumber/assign-attendees`
+
+10. Attendee Management
+    - `POST /attendees`
+    - `GET /attendees`
+    - `GET /attendees/:id`
+    - `PATCH /attendees/:id`
+    - `DELETE /attendees/:id`
+    - `PATCH /attendees/:id/check-in`
+    - `PATCH /attendees/:id/revert-check-in`
+
+11. Issued Tickets & Gate Validation
+    - `GET /issued-tickets`
+    - `GET /issued-tickets/:ticketNumber`
+    - `PATCH /issued-tickets/:ticketNumber`
+    - `DELETE /issued-tickets/:ticketNumber`
+    - `POST /issued-tickets/validate`
+    - `POST /issued-tickets/:ticketNumber/check-in`
+
+12. Email Marketing
+    - `POST /email-marketing/webhooks/brevo`
+    - `POST /email-marketing/templates`
+    - `PATCH /email-marketing/templates/:id`
+    - `GET /email-marketing/templates/:id`
+    - `GET /email-marketing/templates`
+    - `DELETE /email-marketing/templates/:id`
+    - `POST /email-marketing/subscribers`
+    - `POST /email-marketing/subscribers/unsubscribe/:email`
+    - `GET /email-marketing/subscribers`
+    - `POST /email-marketing/subscribers/import`
+    - `POST /email-marketing/segments`
+    - `PATCH /email-marketing/segments/:id`
+    - `GET /email-marketing/segments/:id`
+    - `GET /email-marketing/segments`
+    - `DELETE /email-marketing/segments/:id`
+    - `POST /email-marketing/campaigns`
+    - `PATCH /email-marketing/campaigns/:id`
+    - `GET /email-marketing/campaigns/:id`
+    - `GET /email-marketing/campaigns`
+    - `DELETE /email-marketing/campaigns/:id`
+    - `POST /email-marketing/campaigns/:id/duplicate`
+    - `POST /email-marketing/campaigns/:id/schedule`
+    - `POST /email-marketing/campaigns/:id/cancel`
+    - `POST /email-marketing/campaigns/:id/send`
+
+13. Marketing Subscribers
+    - `POST /marketing/subscribers`
+    - `POST /marketing/unsubscribe`
+    - `GET /marketing/subscribers`
+    - `PATCH /marketing/subscribers/:id`
+    - `DELETE /marketing/subscribers/:id`
+
+14. Newsletter Marketing Campaigns
+    - `POST /marketing-campaigns`
+    - `GET /marketing-campaigns`
+    - `PATCH /marketing-campaigns/:id`
+    - `POST /marketing-campaigns/:id/schedule`
+    - `POST /marketing-campaigns/:id/cancel`
+    - `POST /marketing-campaigns/:id/preview`
+    - `POST /marketing-campaigns/:id/send`
+    - `GET /marketing-campaigns/:id/analytics`
+
+15. Group Planning
+    - `POST /group-plans`
+    - `GET /group-plans`
+    - `GET /group-plans/:id`
+    - `PATCH /group-plans/:id`
+    - `DELETE /group-plans/:id`
+    - `POST /group-plans/:id/invite`
+    - `POST /group-plans/invites/:inviteId/accept`
+    - `POST /group-plans/invites/:inviteId/reject`
+    - `POST /group-plans/:id/leave`
+    - `GET /group-plans/:id/members`
+    - `DELETE /group-plans/:id/members`
+    - `POST /group-plans/:id/transfer-ownership`
+    - `GET /group-plans/:id/activity`
+
+16. Group Chat
+    - `POST /group-chat/rooms`
+    - `GET /group-chat/rooms/:id`
+    - `POST /group-chat/rooms/:id/messages`
+    - `GET /group-chat/rooms/:id/messages`
+    - `PATCH /group-chat/messages/:id`
+    - `DELETE /group-chat/messages/:id`
+    - `POST /group-chat/messages/:id/reactions`
+    - `DELETE /group-chat/messages/:id/reactions`
+
+17. Event Polls
+    - `POST /polls`
+    - `GET /polls/:id`
+    - `PATCH /polls/:id`
+    - `DELETE /polls/:id`
+    - `POST /polls/:id/vote`
+
+18. Wishlist
+    - `POST /wishlists/events/:eventId`
+    - `DELETE /wishlists/events/:eventId`
+    - `GET /wishlists`
+    - `GET /users/me/wishlist`
+
+19. Social Follows
+    - `POST /users/:id/follow`
+    - `DELETE /users/:id/follow`
+    - `POST /organizers/:id/follow`
+    - `DELETE /organizers/:id/follow`
+    - `POST /artists/:id/follow`
+    - `DELETE /artists/:id/follow`
+    - `GET /users/:id/followers`
+    - `GET /users/:id/following`
+
+20. Stories
+    - `POST /stories`
+    - `GET /stories`
+    - `GET /stories/:id`
+    - `DELETE /stories/:id`
+    - `POST /stories/:id/view`
+    - `POST /stories/:id/react`
+    - `POST /stories/:id/reply`
+    - `POST /stories/cleanup/run`
+
+21. Notifications
+    - `GET /notifications`
+    - `PATCH /notifications/:id/read`
+    - `PATCH /notifications/read-all`
+    - `GET /notification-preferences`
+    - `PATCH /notification-preferences`
+
+22. Organizer Profiles
+    - `POST /organizers`
+    - `GET /organizers`
+    - `GET /organizers/:slug`
+    - `PATCH /organizers/:slug`
+    - `DELETE /organizers/:slug`
+    - `GET /organizers/:slug/events`
+    - `GET /organizers/:slug/reviews`
+    - `POST /organizers/:slug/reviews`
+    - `GET /organizers/:slug/analytics`
+
+
+================================================================================
+SECTION 12
+SMOKE TEST COVERAGE
+-------------------
+
+* Existing Smoke Tests:
+  - `tenant-smoke-test.ts`
+  - `venue-smoke-test.ts`
+  - `event-smoke-test.ts`
+  - `ticket-smoke-test.ts`
+  - `attendee-smoke-test.ts`
+  - `booking-smoke-test.ts`
+  - `inventory-smoke-test.ts`
+  - `issued-ticket-smoke-test.ts`
+  - `analytics-smoke-test.ts`
+  - `tenant-analytics-smoke-test.ts`
+  - `slug-smoke-test.ts`
+  - `auth-verification-smoke-test.ts`
+  - `group-plans-smoke-test.ts`
+  - `group-chat-smoke-test.ts`
+  - `event-polls-smoke-test.ts`
+  - `wishlists-smoke-test.ts`
+  - `follow-system-smoke-test.ts`
+  - `stories-smoke-test.ts`
+  - `notifications-smoke-test.ts`
+  - `organizer-profiles-smoke-test.ts`
+  - `email-marketing-smoke-test.ts`
+  - `smoke-test.ts` (covers tenant/venue/event/ticket/booking flow)
+
+* Modules Covered:
+  - Auth, Tenants, Venues, Events, Ticket Types, Booking Orders, Inventory, Issued Tickets, Event Analytics, Tenant Analytics, Wishlists, Organizer Profiles, Group Plans, Group Chat, Event Polls, Follow System, Stories, Notifications, Email Marketing.
+
+* Missing Coverage:
+  - The `users` module has no test coverage (it only contains empty placeholder templates).
+  - The basic `marketing` and `marketing-campaigns` (newsletter campaigns) modules lack dedicated test files, although the separate `email-marketing` module has comprehensive coverage.
+  - The all-in-one runner script `all-smokes.ts` is missing calls to the following existing test scripts: `test:email-marketing`, `test:tenant-analytics`, and `test:smoke-auth-verification`.
+
+
+================================================================================
+SECTION 13
+CURRENT PRODUCT CAPABILITIES
+----------------------------
+
+Today the platform supports:
+* Multi-tenant workspaces isolated by slug subdomains, scoping accounts, members, and resources.
+* Comprehensive event planning setup, mapping events to categories, tags, series templates, and virtual/physical venues.
+* Event ticket configurations including stock limits, booking min/max constraints, and sale windows.
+* Atomic inventory checks, preventing overbooking via transactional reservations.
+* Attendee profiling linked to purchased tickets, capturing name, locations, and emergency contacts.
+* Physical check-in validation scans backend, verifying status, rejecting duplicate scan attempts, and registering times.
+* Event-level and Tenant-level performance dashboard metrics, logging timeseries scans, check-in success logs, and revenue.
+* Automated custom template styling, mailing list segment filters, duplicate functions, scheduling runs, and Brevo suppressions.
+* Social follow bindings connecting users to users, organizers, and artists.
+* Interactive group planning coordination: accept/reject member invites, leaving, activity logging, and transfer of ownership.
+* Plan-linked chat rooms with edit tags, reply references, emoji reactions, and attachment metadata.
+* Polls creation with choice option casting.
+* Visual stories running for 24 hours with view logs, replies, and reactions.
+* Alerts feed and channel preferences toggle dashboard.
+* Organizer profiles containing ratings, reviews, social links, and organized events filters.
+
+It does NOT yet support:
+* Payment checkout processing (Stripe, credit card integration, or wallet balances do not exist in code).
+* Real financial refunds (actions only toggle order/ticket status flag attributes).
+* Automatic recurring events or automated story expiration (requires executing manual clean endpoints).
+* Real-time messaging notifications (chat room lists use REST routes; WebSockets are missing).
+* Calendar synchronization or geographical map navigation interfaces.
+* Moderation queues or reporting filters for chat texts, comments, or story media.
+* User blocking.
+* SOS emergency panel.
+* Trusted contacts alert broadcasts.
+* Event helpline or medical assistance support desks.
+
+
+================================================================================
+SECTION 14
+FEATURE GAP ANALYSIS
+--------------------
+
+* social event discovery
+  - Status: NOT IMPLEMENTED
+  - Evidence: Listing queries query status/dates; no friends connections filters exist in code.
+
+* stories
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/stories` has view logging, emoji reactions, reply texts, and manual cleanup logic.
+
+* group planning
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/group-plans` supports plan CRUD, roles, accept/reject invite state machine, leaves, and ownership transfer.
+
+* group booking
+  - Status: NOT IMPLEMENTED
+  - Evidence: Single user checkout buying multiple tickets is IMPLEMENTED; shared/collaborative split payment is NOT IMPLEMENTED.
+
+* group chat
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/group-chat` handles rooms, REST messages, attachments metadata, reactions, and replies. No WebSockets.
+
+* voting
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/event-polls` manages polls options, casts votes, and tallies results.
+
+* buddies
+  - Status: NOT IMPLEMENTED
+  - Evidence: No database tables or controllers.
+
+* organizer ecosystem
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/organizer-profiles` has profiles CRUD, rating stats, social links, reviews, and organised events filters.
+
+* artist ecosystem
+  - Status: NOT IMPLEMENTED
+  - Evidence: Only the follow target exists in `artist_follows`; no artist details or CRUD exists.
+
+* SOS center
+  - Status: NOT IMPLEMENTED
+  - Evidence: No database tables, routes, or services.
+
+* trusted contacts
+  - Status: NOT IMPLEMENTED
+  - Evidence: No database tables or endpoints.
+
+* event helpline
+  - Status: NOT IMPLEMENTED
+  - Evidence: No tables or endpoints.
+
+* medical assistance discovery
+  - Status: NOT IMPLEMENTED
+  - Evidence: No tables or endpoints.
+
+* issue reporting
+  - Status: NOT IMPLEMENTED
+  - Evidence: No tables or endpoints.
+
+* notifications
+  - Status: IMPLEMENTED
+  - Evidence: `src/modules/notifications` delivers feeds lists and modifies settings.
+
+* wallets
+  - Status: NOT IMPLEMENTED
+  - Evidence: No database tables, ledger, or balance code.

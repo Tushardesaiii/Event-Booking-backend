@@ -1,0 +1,66 @@
+# ==============================================================================
+# REVELIS BACKEND DOCKERIGNORE CONFIGURATION
+# ==============================================================================
+# Exclude files and folders to keep the build context small, optimize caching,
+# and prevent sensitive credentials or environment state from being baked in.
+
+# ------------------------------------------------------------------------------
+# Dependencies and Builds
+# ------------------------------------------------------------------------------
+# Prevent copying local host dependencies which might be compiled for different architectures (e.g. Windows)
+node_modules
+# Exclude host compilation files to enforce building inside the container cleanly
+dist
+# Exclude TypeScript build info caches
+*.tsbuildinfo
+
+# ------------------------------------------------------------------------------
+# Environment & Secret Exclusions
+# ------------------------------------------------------------------------------
+# NEVER copy local secret/credentials files into the image context
+.env
+.env.*
+secrets/
+
+# ------------------------------------------------------------------------------
+# Git & IDE Configuration files
+# ------------------------------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+.github/
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ------------------------------------------------------------------------------
+# Logs & Audits
+# ------------------------------------------------------------------------------
+# Exclude runtime-generated log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# ------------------------------------------------------------------------------
+# Artifacts, Postman, and Diagnostics
+# ------------------------------------------------------------------------------
+# Ignore large testing collections and outputs
+revelis-postman/
+report.json
+COMPREHENSIVE_BACKEND_AUDIT_REPORT.md
+FINANCIAL_AUDIT_REPORT.md
+first_request.md
+email-audit.md
+integration-audit.md
+tenant-security-audit.md
+service-health-report.md
+
+# ------------------------------------------------------------------------------
+# AI Agent Meta-directories
+# ------------------------------------------------------------------------------
+.gemini/
+.agents/
+.antigravityignore

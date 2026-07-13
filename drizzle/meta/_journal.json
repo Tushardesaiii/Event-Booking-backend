@@ -1,0 +1,342 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1716379200000,
+      "tag": "0001_auth_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1716382800000,
+      "tag": "0002_identity_provider_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1716422400000,
+      "tag": "0003_tenant_rbac",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1769068800000,
+      "tag": "0004_venue_infrastructure",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1770000000000,
+      "tag": "0005_event_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1770000600000,
+      "tag": "0006_event_series_legacy_year_compat",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1770001200000,
+      "tag": "0007_events_legacy_start_at_compat",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1770001800000,
+      "tag": "0008_ticket_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1770002400000,
+      "tag": "0009_attendees",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779792600000,
+      "tag": "0010_slug_simplification",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780171200000,
+      "tag": "0011_booking_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780171800000,
+      "tag": "0012_ticket_quantity_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1780172400000,
+      "tag": "0013_issued_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780173000000,
+      "tag": "0014_issued_ticket_operational_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1780173600000,
+      "tag": "0015_issued_ticket_validation_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1780174200000,
+      "tag": "0016_event_discovery_filters",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780174800000,
+      "tag": "0017_inventory_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780272000000,
+      "tag": "0018_signup_verification_sessions_audit_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780394525307,
+      "tag": "0019_add_email_marketing",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780471428461,
+      "tag": "0019_swift_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780471799528,
+      "tag": "0020_narrow_supernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780912813145,
+      "tag": "0021_loose_the_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780912942587,
+      "tag": "0022_special_marvex",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780914778973,
+      "tag": "0023_handy_proteus",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780992741451,
+      "tag": "0024_cute_micromax",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780993809844,
+      "tag": "0025_early_nightcrawler",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780994874232,
+      "tag": "0026_military_whistler",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1781075950226,
+      "tag": "0027_tan_captain_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1781081587340,
+      "tag": "0028_fixed_cassandra_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1781084722591,
+      "tag": "0029_milky_songbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1781605844732,
+      "tag": "0030_chunky_silver_sable",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781607424874,
+      "tag": "0031_whole_the_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781631185903,
+      "tag": "0032_overconfident_ego",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781683966750,
+      "tag": "0033_closed_rattler",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781689050524,
+      "tag": "0034_smiling_marvex",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781689466920,
+      "tag": "0035_redundant_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781690457508,
+      "tag": "0036_outgoing_mentor",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1781851444861,
+      "tag": "0037_huge_daimon_hellstrom",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781854800000,
+      "tag": "0038_financial_duplicate_safeguards",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1781947488816,
+      "tag": "0039_naive_mandarin",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1782050465527,
+      "tag": "0040_eminent_chronomancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1782244244844,
+      "tag": "0041_consumer_profile_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1782245834701,
+      "tag": "0042_consumer_trusted_contacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1782378998250,
+      "tag": "0043_vibes_matchmaking",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1782381993731,
+      "tag": "0044_user_avatar_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1782381993732,
+      "tag": "0045_inventory_oversell_invariant",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1782381993733,
+      "tag": "0046_ledger_immutability",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1783497293197,
+      "tag": "0047_petite_luminals",
+      "breakpoints": true
+    }
+  ]
+}

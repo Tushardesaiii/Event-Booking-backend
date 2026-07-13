@@ -1,0 +1,255 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # App Service (Production Hono Backend)
+  # ----------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: revelis-app
+    restart: unless-stopped
+    command: node dist/index.js
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env.production
+    environment:
+      # Ensure migrations are applied on deploy. The entrypoint runs them before
+      # starting the app when this is "true". Can be overridden in .env.production.
+      RUN_MIGRATIONS: "${RUN_MIGRATIONS:-true}"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Stop timeout for graceful Node shutdown
+    stop_grace_period: 15s
+    # Security Hardening
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=64M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Runtime limits
+    pids_limit: 100
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    # Log Rotation configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - app-network
+      - db-network
+      - monitoring-network
+
+  # ----------------------------------------------------------------------------
+  # Database Service (PostgreSQL)
+  # ----------------------------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: revelis-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-revelis_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-revelis_password}
+      POSTGRES_DB: ${DB_NAME:-revelis_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.50'
+          memory: 512M
+    networks:
+      - db-network
+
+  # ----------------------------------------------------------------------------
+  # Cache Service (Redis)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: revelis-redis
+    restart: unless-stopped
+    # Enterprise Redis configuration: configurable maxmemory, eviction, AOF persistence
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-revelis_redis_password}
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAXMEMORY:-256mb}
+      --maxmemory-policy ${REDIS_EVICTION_POLICY:-allkeys-lru}
+      --auto-aof-rewrite-percentage 100
+      --auto-aof-rewrite-min-size 64mb
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-revelis_redis_password}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - db-network
+
+  # ----------------------------------------------------------------------------
+  # Monitoring: Prometheus Scraper
+  # ----------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: revelis-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - monitoring-network
+    depends_on:
+      - app
+
+  # ----------------------------------------------------------------------------
+  # Monitoring: Grafana Dashboard
+  # ----------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana-oss:10.4.1
+    container_name: revelis-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      # Must be provided via environment/secret in production — no hardcoded default.
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - monitoring-network
+    depends_on:
+      - prometheus
+
+  # ----------------------------------------------------------------------------
+  # Monitoring Exporter: Node Exporter (Host Metrics)
+  # ----------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: revelis-node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($|/)'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "2m"
+        max-file: "2"
+    networks:
+      - monitoring-network
+
+  # ----------------------------------------------------------------------------
+  # Monitoring Exporter: Redis Exporter (Redis Metrics)
+  # ----------------------------------------------------------------------------
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: revelis-redis-exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=revelis_redis_password
+    depends_on:
+      - redis
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "2m"
+        max-file: "2"
+    networks:
+      - db-network
+      - monitoring-network
+
+networks:
+  app-network:
+    driver: bridge
+  db-network:
+    driver: bridge
+    internal: true
+  monitoring-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
